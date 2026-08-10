@@ -243,15 +243,24 @@ Legend: ✅ present · ➕ added in this pass · ⬜ still to add later
 
 - **ResumeService:** webmvc ✅, spring-ai pgvector vector-store ✅, postgres ✅,
   resilience4j ➕, spring-ai OpenAI model starter ➕, spring-data-jpa ➕, actuator ➕.
-- **ScraperService:** mongodb ✅, kafka ✅, webmvc ✅, resilience4j ➕, actuator ➕.
-  ⬜ `jsoup` (HTML parsing) — add when building per-site scrapers (not a Spring starter).
+- **ScraperService:** mongodb ✅, kafka ✅, webmvc ✅, resilience4j ➕, actuator ➕,
+  `jsoup` ➕ (HTML parsing; not a Spring starter). **One `SiteScraper` bean per site**
+  (LinkedIn first; Indeed/Handshake/etc. are added the same way): each extends
+  `AbstractJsoupSiteScraper` (shared fetch + circuit breaker + selector extraction) and is
+  gated behind its own `scraper.<site>.enabled` flag. The orchestrator fans out over the
+  injected `List<SiteScraper>`, so onboarding a site is add-a-bean, no orchestrator change.
 - **JobCompressionService:** kafka ✅, webmvc ✅, resilience4j ➕, spring-ai OpenAI model
   starter ➕, actuator ➕. No DB (stateless) — correct.
 - **SearchService:** elasticsearch ✅, kafka ✅, webmvc ✅, postgres ✅, resilience4j ➕,
   spring-data-jpa ➕, actuator ➕.
 
-⬜ **Everywhere, still to wire:** Consul discovery (`spring-cloud-starter-consul-discovery`)
-+ client-side LB; Spring Cloud Gateway module; Cognito JWT validation at the gateway.
+**Now wired:** Consul discovery (`spring-cloud-starter-consul-discovery`) on all four services
++ the Gateway; client-side LB (`spring-cloud-starter-loadbalancer`) on Search→Resume
+(`lb://ResumeService`); a **Gateway** module (`spring-cloud-starter-gateway-server-webmvc`,
+Spring Cloud 5.0) routing `/api/resumes/**`→ResumeService and `/api/jobs/**`→SearchService, both
+load-balanced over Consul-discovered instances.
+⬜ **Still deferred:** Cognito JWT validation at the gateway — the auth filter is a documented
+pass-through today (Cognito is the genuinely-deferred, AWS-deployment decision — §5).
 
 ## 9. Open items / not yet decided
 - **Frontend** — assumed a separate app; not in scope of these 4 services.
