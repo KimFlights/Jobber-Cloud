@@ -1,0 +1,60 @@
+# Root .gitignore for the Jobber multi-service repo.
+# Each service also has its own Spring Initializr .gitignore (target/, IDE, build/).
+# This umbrella adds OS, secret, and cross-cutting ignores.
+
+### macOS / OS ###
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
+
+### Secrets / local config (NEVER commit API keys — OpenAI, Cognito, DB creds) ###
+.env
+.env.*
+*.env
+**/application-local.properties
+**/application-local.yml
+**/application-local.yaml
+**/application-secret*.properties
+**/application-secret*.yml
+**/*-secret.properties
+secrets/
+*.pem
+*.key
+
+### Java / Maven build output ###
+target/
+build/
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.class
+HELP.md
+
+### Maven wrapper (keep scripts, ignore downloaded jar) ###
+.mvn/wrapper/maven-wrapper.jar
+
+### Logs ###
+*.log
+logs/
+
+### IDE / editor ###
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+.apt_generated
+.factorypath
+.springBeans
+.sts4-cache
+*.swp
+*~
+
+### Local infra / runtime ###
+docker-compose.override.yml
