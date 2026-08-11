@@ -122,6 +122,22 @@ flowchart TB
     style svcs fill:#eaf0f8,stroke:#8896ab
 ```
 
+### 3.3 Infra bootstrap (`infra/`)
+
+Version-controlled scripts that provision the backing stores before any service runs — not
+application code; nothing in the services imports from here.
+
+- **`infra/postgres-init.sql`** — mounted into the Postgres container's
+  `/docker-entrypoint-initdb.d`, so Postgres runs it automatically **on first container start
+  (empty data volume only)**. It creates the two per-service databases — `resume` and `search`
+  (honoring the §2 data-ownership split) — and enables the `pgvector` extension in each (needed
+  for ResumeService's 1536-dim embeddings). Without it the single Postgres container comes up
+  with only the default DB and no vector support, and both services fail to persist.
+- **Gotcha:** the init script runs only when `jobber_pgdata` is empty; editing it has no effect
+  on an existing volume — wipe it (`docker compose down -v`) to re-provision.
+- Future environment prerequisites (ES index templates, Kafka topic pre-creation, etc.) belong
+  here too.
+
 ## 4. End-to-end pipeline
 
 ```
@@ -244,11 +260,13 @@ Legend: ✅ present · ➕ added in this pass · ⬜ still to add later
 - **ResumeService:** webmvc ✅, spring-ai pgvector vector-store ✅, postgres ✅,
   resilience4j ➕, spring-ai OpenAI model starter ➕, spring-data-jpa ➕, actuator ➕.
 - **ScraperService:** mongodb ✅, kafka ✅, webmvc ✅, resilience4j ➕, actuator ➕,
-  `jsoup` ➕ (HTML parsing; not a Spring starter). **One `SiteScraper` bean per site**
-  (LinkedIn first; Indeed/Handshake/etc. are added the same way): each extends
-  `AbstractJsoupSiteScraper` (shared fetch + circuit breaker + selector extraction) and is
-  gated behind its own `scraper.<site>.enabled` flag. The orchestrator fans out over the
-  injected `List<SiteScraper>`, so onboarding a site is add-a-bean, no orchestrator change.
+  `jsoup` ➕ (HTML parsing; not a Spring starter). **One `SiteScraper` bean per source**, each
+  gated behind its own `scraper.<source>.enabled` flag. Two shared base classes cover the two
+  fetch styles: `AbstractJsoupSiteScraper` (HTML pages — shared fetch + circuit breaker + CSS
+  selector extraction) and `AbstractJsonApiScraper` (JSON APIs — shared `RestClient` + circuit
+  breaker + HTML-strip + local relevance filter). The orchestrator fans out over the injected
+  `List<SiteScraper>`, so onboarding a source is add-a-bean, no orchestrator change. See §8.1 for
+  the source inventory.
 - **JobCompressionService:** kafka ✅, webmvc ✅, resilience4j ➕, spring-ai OpenAI model
   starter ➕, actuator ➕. No DB (stateless) — correct.
 - **SearchService:** elasticsearch ✅, kafka ✅, webmvc ✅, postgres ✅, resilience4j ➕,
@@ -261,6 +279,36 @@ Spring Cloud 5.0) routing `/api/resumes/**`→ResumeService and `/api/jobs/**`�
 load-balanced over Consul-discovered instances.
 ⬜ **Still deferred:** Cognito JWT validation at the gateway — the auth filter is a documented
 pass-through today (Cognito is the genuinely-deferred, AWS-deployment decision — §5).
+
+### 8.1 Job sources (ScraperService)
+
+Each source is a `SiteScraper` bean toggled by `scraper.<source>.enabled`. Preference order:
+key-less public JSON API > public ATS feed > HTML scraping (ToS-sensitive) > paid/keyed API.
+Descriptions arriving as HTML are stripped to text; feeds without a server-side search are pulled
+and filtered locally, then ES does the authoritative relevance ranking at search time.
+
+| Source | Kind | Auth | Query model | Default | Notes |
+| ------ | ---- | ---- | ----------- | ------- | ----- |
+| **Remotive** | JSON API | none | server-side `search=` | **on** | remote jobs; cleanest fit |
+| **Arbeitnow** | JSON feed | none | local filter | **on** | tech / EU board |
+| **Himalayas** | JSON API | none | local filter | **on** | remote-jobs open API for aggregators |
+| **Hacker News** | Firebase API | none | local filter | **on** | monthly "Who is hiring?" thread; 1 call/comment (slowest) |
+| **Ashby** | ATS JSON | none | local filter | **on** | per-company (`scraper.ashby.companies`, default `ramp`) |
+| **SmartRecruiters** | ATS JSON | none | server-side `q=` | **on** | per-company (`…smartrecruiters.companies`, default `BoschGroup`) |
+| **Lever** | ATS JSON | none | local filter | **off** | per-company; no live public board verified — supply your own handles |
+| **LinkedIn** | HTML (jsoup) | none | site search URL | **off** | rate-limited / ToS-restricted (§9); real API in prod |
+| **Sample** | generator | — | synthetic | **off** | fake `example.com` demo data; on only to exercise the pipeline offline |
+
+**Deferred — need a signup/API key, skipped for now** (would each slot in as one more `SiteScraper`
+behind an `…enabled` flag once credentials exist):
+
+- **SerpApi** — aggregates **Google Jobs** results via a paid API key (free tier). Requires an
+  account + `SERPAPI_KEY`.
+- **Google Jobs (direct SERP scraping)** — no official API; practical access is via SerpApi (above)
+  or another keyed SERP provider. Direct scraping hits Google anti-bot walls, so it is not attempted.
+
+Per-source posting volume is capped by `scraper.max-results-per-site` (default 15) to bound Kafka /
+Mongo / LLM-enrichment cost.
 
 ## 9. Open items / not yet decided
 - **Frontend** — assumed a separate app; not in scope of these 4 services.

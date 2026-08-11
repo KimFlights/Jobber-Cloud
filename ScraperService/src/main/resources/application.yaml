@@ -36,17 +36,44 @@ spring:
 
 # Scraper behaviour
 scraper:
-  # HTTP settings shared by all jsoup-based site scrapers
+  # HTTP settings shared by all site scrapers (jsoup + JSON-API)
   http:
     user-agent: ${SCRAPER_USER_AGENT:JobberBot/1.0 (+https://example.com/bot)}
     timeout-millis: 8000
-  # Demo generator — on by default so the pipeline runs without hitting live sites
-  sample:
-    enabled: ${SCRAPER_SAMPLE_ENABLED:true}
-    jobs-per-query: 12
-  # Real sites: one flag per SiteScraper bean. Add a bean + a flag here to onboard a site.
+  # Cap on postings kept per source per scrape — bounds Kafka/Mongo/LLM-enrichment load.
+  max-results-per-site: ${SCRAPER_MAX_PER_SITE:15}
+
+  # --- Real JSON-API sources (key-less public APIs / ATS feeds; on by default) ---
+  # Global keyword search / feeds:
+  remotive:
+    enabled: ${SCRAPER_REMOTIVE_ENABLED:true}    # remote-jobs API, server-side search
+  arbeitnow:
+    enabled: ${SCRAPER_ARBEITNOW_ENABLED:true}   # public JSON feed, filtered locally
+  himalayas:
+    enabled: ${SCRAPER_HIMALAYAS_ENABLED:true}   # remote-jobs open API, filtered locally
+  hackernews:
+    enabled: ${SCRAPER_HN_ENABLED:true}          # HN "Who is hiring?" via Firebase API
+  # Per-company ATS boards (need company slugs; disable by clearing the list):
+  ashby:
+    enabled: ${SCRAPER_ASHBY_ENABLED:true}
+    companies: ${SCRAPER_ASHBY_COMPANIES:ramp}
+  smartrecruiters:
+    enabled: ${SCRAPER_SR_ENABLED:true}
+    companies: ${SCRAPER_SR_COMPANIES:BoschGroup}
+  # Off by default — no live public board verified at build time; supply your own handles.
+  lever:
+    enabled: ${SCRAPER_LEVER_ENABLED:false}
+    companies: ${SCRAPER_LEVER_COMPANIES:}
+
+  # --- HTML scraping (ToS-sensitive; off by default) ---
   linkedin:
     enabled: ${SCRAPER_LINKEDIN_ENABLED:false}
+
+  # --- Demo generator (fake example.com data) — off now that real sources exist ---
+  sample:
+    enabled: ${SCRAPER_SAMPLE_ENABLED:false}
+    jobs-per-query: 12
+
   freshness:
     min-results: 10
     max-age-days: 7
