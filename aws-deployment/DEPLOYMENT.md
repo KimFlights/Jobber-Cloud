@@ -156,6 +156,48 @@ flowchart TB
   every service attaches to the same set. **IAM roles + security groups** authorize each
   service to reach its AWS resources.
 
+## AWS deployment diagram (services & where they run)
+
+Where the container diagram above is *logical* (who calls whom), this diagram is *topological*
+— modeled after an AWS reference architecture: it shows the **Region boundary**, the **VPC**
+with **public vs. private subnets across two Availability Zones**, and which **managed AWS
+services sit inside the VPC vs. as regional endpoints outside it**. The boxes are the actual AWS
+service icons, grouped by *where* they run (call/dependency arrows are deliberately omitted — the
+request flow is spelled out below, and the logical "who-calls-whom" wiring is in the container
+diagram above).
+
+![Jobber-Cloud AWS deployment architecture](aws-architecture.png)
+
+> Rendered from [`aws_architecture_svg.py`](aws_architecture_svg.py) — a hand-placed,
+> fixed-coordinate SVG (official AWS icons embedded) rasterised to PNG via headless Chrome.
+> Regenerate after editing: `python aws_architecture_svg.py`.
+
+**Request flow (left → right):** the browser loads the SPA from **CloudFront** (S3 origin) → logs
+in via **Cognito** (JWT) → calls **API Gateway** with the Bearer JWT → **VPC Link** to the
+internal **ALB** → routed to a **Fargate** task. The one east-west sync call, Search → Resume,
+resolves via **Cloud Map** (`@LoadBalanced` RestClient + Resilience4j). Async pipeline: Scraper →
+**MSK** → JobCompression → **MSK** → Search. Private tasks reach **OpenAI** out through the **NAT
+Gateway**. Cross-cutting (Parameter Store, AppConfig, CloudWatch, X-Ray, ECR) attaches to every
+task.
+
+### Where each AWS service runs
+
+| Layer | AWS service | Runs where | Reached by |
+|---|---|---|---|
+| Edge | CloudFront + S3 | Regional (global edge / regional bucket) | Browser over HTTPS |
+| Identity | Cognito | Regional endpoint | Browser (login), API Gateway (validate JWT) |
+| API edge | API Gateway | Regional endpoint | Browser → VPC Link → ALB |
+| N-S routing | ALB | **Public subnets**, multi-AZ | API Gateway VPC Link |
+| Compute | ECS Fargate (4 services) | **Private subnets**, multi-AZ | ALB, Cloud Map |
+| Compute (planned) | Lambda (compressor) | AWS-managed, VPC-attached | MSK event source |
+| Discovery | Cloud Map | In-VPC namespace | Fargate tasks (`DiscoverInstances`) |
+| Data | RDS/Aurora PostgreSQL ×2, OpenSearch, DocumentDB | **Private subnets**, multi-AZ | Owning service via security groups |
+| Messaging | Amazon MSK | **Private subnets**, multi-AZ | Scraper / Compressor / Search (IAM auth) |
+| Egress | NAT Gateway | **Public subnets** | Private tasks reaching OpenAI |
+| Config/secrets | Parameter Store, AppConfig | Regional API (VPC endpoint) | All tasks (IAM task role) |
+| Observability | CloudWatch, X-Ray (ADOT) | Regional API | All tasks |
+| Images | ECR | Regional API (VPC endpoint) | ECS execution role at task start |
+
 ## Local (Docker) → AWS: library & dependency changes
 
 What actually changes in the code/deploy when moving from the Docker Compose stack to AWS.
