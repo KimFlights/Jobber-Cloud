@@ -1,0 +1,46 @@
+{
+  "family": "jobber-compressor",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::019720628733:role/jobber-ecs-execution",
+  "taskRoleArn": "arn:aws:iam::019720628733:role/jobber-task-compressor",
+  "containerDefinitions": [
+    {
+      "name": "compressor",
+      "image": "019720628733.dkr.ecr.us-east-1.amazonaws.com/jobber/compressor:latest",
+      "essential": true,
+      "portMappings": [{ "containerPort": 8083, "protocol": "tcp" }],
+      "environment": [
+        { "name": "APPCONFIG_PROFILE", "value": "compressor" }
+      ],
+      "secrets": [
+        { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:ssm:us-east-1:019720628733:parameter/jobber/openai/api-key" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/jobber-compressor",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "compressor"
+        }
+      }
+    },
+    {
+      "name": "appconfig-agent",
+      "image": "public.ecr.aws/aws-appconfig/aws-appconfig-agent:2.x",
+      "essential": false,
+      "environment": [{ "name": "AWS_REGION", "value": "us-east-1" }],
+      "portMappings": [{ "containerPort": 2772, "protocol": "tcp" }],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/jobber-compressor",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "appconfig"
+        }
+      }
+    }
+  ]
+}

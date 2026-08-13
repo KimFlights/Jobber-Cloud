@@ -20,8 +20,16 @@ public class MongoConfig {
 
     @Bean
     MongoClient mongoClient(
+            @Value("${MONGODB_URI:}") String uri,
             @Value("${spring.data.mongodb.host:localhost}") String host,
             @Value("${spring.data.mongodb.port:27017}") int port) {
+        // AWS: MONGODB_URI is the full DocumentDB connection string (TLS + retryWrites=false + credentials
+        // + authSource). We build the client straight from it — Boot 4.1 won't bind a placeholder onto
+        // spring.data.mongodb.uri, so passing it through here is the reliable path.
+        if (uri != null && !uri.isBlank()) {
+            return MongoClients.create(uri);
+        }
+        // Local dev: plain host/port Mongo, no auth/TLS.
         return MongoClients.create("mongodb://%s:%d".formatted(host, port));
     }
 

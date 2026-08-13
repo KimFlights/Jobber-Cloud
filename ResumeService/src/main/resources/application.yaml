@@ -1,51 +1,12 @@
+# CLOUD variant (Jobber-Cloud): this service loads its FULL configuration from AWS AppConfig at
+# startup — see AppConfigEnvironmentPostProcessor, which fetches the AppConfig 'resume' document via
+# the AppConfig Agent sidecar (localhost:2772). Only the bootstrap identity lives here; datasource,
+# OpenAI, pgvector, actuator, etc. are all defined in AppConfig, with secrets as ${ENV} placeholders
+# resolved against the Parameter-Store-injected environment variables.
+#
+# AppConfig coordinates come from the environment (APPCONFIG_PROFILE=resume, and APPCONFIG_APPLICATION
+# / APPCONFIG_ENVIRONMENT which default to jobber / prod). With APPCONFIG_PROFILE unset (local dev)
+# the post-processor is a no-op and this file is the whole config.
 spring:
   application:
     name: ResumeService
-
-  cloud:
-    consul:
-      host: ${CONSUL_HOST:localhost}
-      port: ${CONSUL_PORT:8500}
-      discovery:
-        prefer-ip-address: true
-        health-check-path: /actuator/health
-        instance-id: ${spring.application.name}-${random.value}
-
-  datasource:
-    url: ${RESUME_DB_URL:jdbc:postgresql://localhost:5432/resume}
-    username: ${RESUME_DB_USER:jobber}
-    password: ${RESUME_DB_PASSWORD:jobber}
-
-  jpa:
-    hibernate:
-      ddl-auto: update
-    open-in-view: false
-
-  ai:
-    openai:
-      api-key: ${OPENAI_API_KEY:}
-      chat:
-        options:
-          model: ${OPENAI_CHAT_MODEL:gpt-4o-mini}
-      embedding:
-        options:
-          # Pinned model + dimension. MUST match JobCompressionService or cosine match is meaningless.
-          model: ${EMBEDDING_MODEL:text-embedding-3-small}
-          dimensions: ${EMBEDDING_DIM:1536}
-    vectorstore:
-      pgvector:
-        initialize-schema: true
-        dimensions: ${EMBEDDING_DIM:1536}
-
-server:
-  port: ${SERVER_PORT:8081}
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-  endpoint:
-    health:
-      probes:
-        enabled: true
